@@ -18,7 +18,7 @@ laitila <- data %>%
 #---------------------------------------------
 # Open data on municipalities, population 2023
 #
-# "https://statfin.stat.fi/PXWeb/api/v1/fi/StatFin/vaerak/statfin_vaerak_pxt_11re.px"
+# https://statfin.stat.fi/PXWeb/api/v1/fi/StatFin/vaerak/statfin_vaerak_pxt_11re.px
 #
 #---------------------------------------------
 
@@ -46,7 +46,6 @@ share <- data_all_l %>%
 # Municipalities by geofi
 #--------------------------
 d1 <- get_municipalities(year = 2023)
-
 saveRDS(d1, "kunnat.RDS")
 
 kunnat_geom <- d1 %>% 
@@ -79,7 +78,10 @@ m1 <- ggplot() +
        aes(fill = Osuus)) +
   scale_fill_viridis_d(option = "inferno", direction = -1) +
   guides(fill = guide_legend(title = "Osuus väestöstä %")) +
-  theme_minimal()
+  theme(axis.text.x = element_blank(),
+        axis.text.y = element_blank(),
+        axis.ticks = element_blank(),
+        rect = element_blank())
 
 m2 <- ggplot() +
   geom_sf(data = polygon) +
@@ -87,7 +89,10 @@ m2 <- ggplot() +
           aes(fill = Lkm)) +
   scale_fill_viridis_d(option = "inferno", direction = -1) +
   guides(fill = guide_legend(title = "Lukumäärä")) +
-  theme_minimal()
+  theme(axis.text.x = element_blank(),
+        axis.text.y = element_blank(),
+        axis.ticks = element_blank(),
+        rect = element_blank())
 
 (m2 | m1) + 
   plot_layout(nrow = 1) +
