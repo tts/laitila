@@ -17,9 +17,6 @@ laitila <- data %>%
 
 #---------------------------------------------
 # Open data on municipalities, population 2023
-#
-# https://statfin.stat.fi/PXWeb/api/v1/fi/StatFin/vaerak/statfin_vaerak_pxt_11re.px
-#
 #---------------------------------------------
 
 d <- pxweb_interactive("https://statfin.stat.fi/PXWeb/api/v1/fi")
@@ -48,6 +45,8 @@ share <- data_all_l %>%
 d1 <- get_municipalities(year = 2023)
 saveRDS(d1, "kunnat.RDS")
 
+d1 <- readRDS("kunnat.RDS")
+
 kunnat_geom <- d1 %>% 
   select(kunta, nimi, geom) %>% 
   rename(Kuntakoodi = kunta) %>% 
@@ -72,6 +71,8 @@ share_geom$Lkm <- cut(
 
 saveRDS(share_geom, "laitila_muualla.RDS")
 
+share_geom <- readRDS("laitila_muualla.RDS")
+
 m1 <- ggplot() +
   geom_sf(data = d1) +
   geom_sf(data = share_geom, 
@@ -84,7 +85,7 @@ m1 <- ggplot() +
         rect = element_blank())
 
 m2 <- ggplot() +
-  geom_sf(data = polygon) +
+  geom_sf(data = d1) +
   geom_sf(data = share_geom, 
           aes(fill = Lkm)) +
   scale_fill_viridis_d(option = "inferno", direction = -1) +
@@ -98,3 +99,45 @@ m2 <- ggplot() +
   plot_layout(nrow = 1) +
   plot_annotation(title = "Laitilassa syntyneiden asuinkunta vuonna 2023")
 
+#-----------------------------------------------------
+# Nationality of ppl in Laitila 2023 (11rh)
+#-----------------------------------------------------
+
+m <- pxweb_interactive("https://statfin.stat.fi/PXWeb/api/v1/fi")
+l_data <- m$data
+
+l_data <- l_data %>% 
+  filter(!Kansalaisuus %in% c("AMERIKKA", "EUROOPPA", "AASIA", 
+                              "AFRIKKA", "OSEANIA", "ULKOMAAT YHTEENSÄ")) %>% 
+  filter(!is.na(`Väestö 31.12.`)) %>% 
+  rename(Lkm = `Väestö 31.12.`) %>% 
+  select(Kansalaisuus, Lkm)
+
+saveRDS(l_data, "Laitila_kansalaisuus.RDS")
+
+#-----------------------------------------------------
+# Intermunicipal migration by area of arrival, 
+# 1990-2023 (11a1)
+#-----------------------------------------------------
+
+migr <- pxweb_interactive("https://statfin.stat.fi/PXWeb/api/v1/fi")
+
+migr_data <- migr$data
+
+migr_data <- migr_data %>% 
+  filter(`Kuntien välinen muutto` != 0)
+
+saveRDS(migr_data, "tulleet_laitilaan.RDS")
+
+#-----------------------------------------------------
+# Intermunicipal migration by area of departure, 
+# 1990-2023 (11a1)
+#-----------------------------------------------------
+migr_d <- pxweb_interactive("https://statfin.stat.fi/PXWeb/api/v1/fi")
+
+migr_d_data <- migr_d$data
+
+migr_d_data <- migr_d_data %>% 
+  filter(`Kuntien välinen muutto` != 0)
+
+saveRDS(migr_d_data, "lahteneet_laitilasta.RDS")
