@@ -4,20 +4,20 @@ library(pxweb)
 library(geofi)
 library(sf)
 library(patchwork)
+library(ggsankey)
 
-#---------------------------------
-# Data licensed from Tilastokeskus. 
-# Number of people by municipality 
-# in 2023, born in Laitila
-#---------------------------------
+#-----------------------------------------------------------
+# Number of people by municipality in 2023, born in Laitila
+# 
+# Data licensed from Tilastokeskus 
+#-----------------------------------------------------------
+
 data <- read_excel("24PIENEP_418.xlsx", skip = 2)
 laitila <- data %>% 
   filter(Kuntakoodi != "SSS") %>% 
   rename(laitilasta = `2023`)
 
-#---------------------------------------------
-# Open data on municipalities, population 2023
-#---------------------------------------------
+#------ Open data on municipalities, population 2023
 
 d <- pxweb_interactive("https://statfin.stat.fi/PXWeb/api/v1/fi")
 data_all <- d$data
@@ -39,13 +39,10 @@ share <- data_all_l %>%
          Kuntakoodi = gsub("^0+", "", Kuntakoodi)) %>% 
   filter(Kuntanimi != "KOKO MAA")
 
-#--------------------------
-# Municipalities by geofi
-#--------------------------
+#------ Municipalities by geofi
+
 d1 <- get_municipalities(year = 2023)
 saveRDS(d1, "kunnat.RDS")
-
-d1 <- readRDS("kunnat.RDS")
 
 kunnat_geom <- d1 %>% 
   select(kunta, nimi, geom) %>% 
@@ -71,8 +68,6 @@ share_geom$Lkm <- cut(
 
 saveRDS(share_geom, "laitila_muualla.RDS")
 
-share_geom <- readRDS("laitila_muualla.RDS")
-
 m1 <- ggplot() +
   geom_sf(data = d1) +
   geom_sf(data = share_geom, 
@@ -97,47 +92,82 @@ m2 <- ggplot() +
 
 (m2 | m1) + 
   plot_layout(nrow = 1) +
-  plot_annotation(title = "Laitilassa syntyneiden asuinkunta vuonna 2023")
+  plot_annotation(title = "Laitilassa syntyneiden asuinkunta vuonna 2023",
+                  caption = "Tilastokeskus | geofi: Access Finnish Geospatial Data | Tuija Sonkkila",
+                  theme = theme(plot.title = element_text(size = 16, hjust = .5)))
 
-#-----------------------------------------------------
-# Nationality of ppl in Laitila 2023 (11rh)
-#-----------------------------------------------------
+ggsave("Laitilassa_syntyneet.pdf", width = 20, height = 13, units = "cm")
 
-m <- pxweb_interactive("https://statfin.stat.fi/PXWeb/api/v1/fi")
-l_data <- m$data
 
-l_data <- l_data %>% 
-  filter(!Kansalaisuus %in% c("AMERIKKA", "EUROOPPA", "AASIA", 
-                              "AFRIKKA", "OSEANIA", "ULKOMAAT YHTEENSÄ")) %>% 
-  filter(!is.na(`Väestö 31.12.`)) %>% 
-  rename(Lkm = `Väestö 31.12.`) %>% 
-  select(Kansalaisuus, Lkm)
+#------------------------------------------------------------------
+# Intermunicipal migration by area of departure, 1990-2023 (11a1)
+#
+# Open data
+#------------------------------------------------------------------
 
-saveRDS(l_data, "Laitila_kansalaisuus.RDS")
-
-#-----------------------------------------------------
-# Intermunicipal migration by area of arrival, 
-# 1990-2023 (11a1)
-#-----------------------------------------------------
-
-migr <- pxweb_interactive("https://statfin.stat.fi/PXWeb/api/v1/fi")
-
-migr_data <- migr$data
-
-migr_data <- migr_data %>% 
-  filter(`Kuntien välinen muutto` != 0)
-
-saveRDS(migr_data, "tulleet_laitilaan.RDS")
-
-#-----------------------------------------------------
-# Intermunicipal migration by area of departure, 
-# 1990-2023 (11a1)
-#-----------------------------------------------------
 migr_d <- pxweb_interactive("https://statfin.stat.fi/PXWeb/api/v1/fi")
 
 migr_d_data <- migr_d$data
 
 migr_d_data <- migr_d_data %>% 
-  filter(`Kuntien välinen muutto` != 0)
+  filter(`Kuntien välinen muutto` != 0) %>% 
+  mutate(Lähtöalue = "Laitila",
+         Tuloalue = gsub("Tulo - ", "", Tuloalue))
 
 saveRDS(migr_d_data, "lahteneet_laitilasta.RDS")
+
+#------ Add maakunta
+
+migr_d_m_data <- left_join(migr_d_data, d1, by = c("Tuloalue" = "nimi"))
+
+migr_d_m_data <- migr_d_m_data %>% 
+  select(Tuloalue, Lähtöalue, Sukupuoli, Vuosi, `Kuntien välinen muutto`, maakunta_name_fi) %>% 
+  rename(Maakunta = maakunta_name_fi, Kunta = Tuloalue)
+
+before2000 <- migr_d_m_data %>% 
+  mutate(Vuosi = as.integer(Vuosi)) %>% 
+  filter(`Kuntien välinen muutto` >= 10,
+         Vuosi < 2000) 
+
+before2010 <- migr_d_m_data %>% 
+  mutate(Vuosi = as.integer(Vuosi)) %>% 
+  filter(`Kuntien välinen muutto` >= 10,
+         Vuosi >= 2000 & Vuosi < 2010) 
+
+after2010 <- migr_d_m_data %>% 
+  mutate(Vuosi = as.integer(Vuosi)) %>% 
+  filter(`Kuntien välinen muutto` >= 10,
+         Vuosi >= 2010) 
+
+do_sankey <- function(df) {
+  df_long <- df %>% 
+    make_long(Vuosi, Maakunta, Kunta) 
+  
+  s <- ggplot(df_long, 
+              aes(x = x, next_x = next_x, 
+                  node = node, next_node = next_node, 
+                  fill = factor(node), label = node)) +
+    geom_sankey(flow.alpha = .6,
+                node.color = "gray30") +
+    geom_sankey_label(size = 3, color = "white", fill = "gray40") +
+    scale_fill_viridis_d(drop = FALSE) +
+    theme_void(base_size = 30) +
+    labs(x = NULL) +
+    theme(legend.position = "none",
+          plot.caption = element_text(vjust = .4, size = 3)) 
+
+  return(s)
+}
+
+s1 <- do_sankey(before2000)
+s2 <- do_sankey(before2010)
+s3 <- do_sankey(after2010)
+
+(s1 | s2 | s3) + 
+  plot_layout(nrow = 1) +
+  plot_annotation(title = "Laitilasta muualle muuttaneet (n >= 10)",
+                  caption = "Tilastokeskus | rOpenGov/pxweb | Tuija Sonkkila",
+                  theme = theme(plot.title = element_text(size = 16, hjust = .5)))
+
+ggsave("Laitilasta_muuttaneet.pdf", width = 20, height = 13, units = "cm")
+
