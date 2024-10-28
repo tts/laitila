@@ -68,29 +68,23 @@ share_geom$Lkm <- cut(
 
 saveRDS(share_geom, "laitila_muualla.RDS")
 
-m1 <- ggplot() +
-  geom_sf(data = d1) +
-  geom_sf(data = share_geom, 
-       aes(fill = Osuus)) +
-  scale_fill_viridis_d(option = "inferno", direction = -1) +
-  guides(fill = guide_legend(title = "Osuus väestöstä %")) +
-  theme(axis.text.x = element_blank(),
-        axis.text.y = element_blank(),
-        axis.ticks = element_blank(),
-        rect = element_blank())
+do_plot <- function(fill, title) {
+  ggplot() +
+    geom_sf(data = d1) +
+    geom_sf(data = share_geom, 
+            aes(fill = !!sym(fill))) +
+    scale_fill_viridis_d(option = "inferno", direction = -1) +
+    guides(fill = guide_legend(title = title)) +
+    theme(axis.text.x = element_blank(),
+          axis.text.y = element_blank(),
+          axis.ticks = element_blank(),
+          rect = element_blank())
+}
 
-m2 <- ggplot() +
-  geom_sf(data = d1) +
-  geom_sf(data = share_geom, 
-          aes(fill = Lkm)) +
-  scale_fill_viridis_d(option = "inferno", direction = -1) +
-  guides(fill = guide_legend(title = "Lukumäärä")) +
-  theme(axis.text.x = element_blank(),
-        axis.text.y = element_blank(),
-        axis.ticks = element_blank(),
-        rect = element_blank())
+m1 <- do_plot("Lkm", "Lukumäärä")
+m2 <- do_plot("Osuus", "Osuus väestöstä %")
 
-(m2 | m1) + 
+(m1 | m2) + 
   plot_layout(nrow = 1) +
   plot_annotation(title = "Laitilassa syntyneiden asuinkunta vuonna 2023",
                   caption = "Tilastokeskus | geofi: Access Finnish Geospatial Data | Tuija Sonkkila",
