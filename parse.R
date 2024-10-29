@@ -90,14 +90,13 @@ m2 <- do_plot("Osuus", "Osuus väestöstä %")
                   caption = "Tilastokeskus | geofi: Access Finnish Geospatial Data | Tuija Sonkkila",
                   theme = theme(plot.title = element_text(size = 16, hjust = .5)))
 
-ggsave("Laitilassa_syntyneet.pdf", width = 20, height = 13, units = "cm")
+ggsave("Laitilassa_syntyneet.png", dpi = 600, height = 12, width = 20, units = "cm")
 
+#---------------------------------------
+# Intermunicipal migration 1990-2023
+#---------------------------------------
 
-#------------------------------------------------------------------
-# Intermunicipal migration by area of departure, 1990-2023 (11a1)
-#
-# Open data
-#------------------------------------------------------------------
+#----- by area of departure
 
 migr_d <- pxweb_interactive("https://statfin.stat.fi/PXWeb/api/v1/fi")
 
@@ -110,13 +109,34 @@ migr_d_data <- migr_d_data %>%
 
 saveRDS(migr_d_data, "lahteneet_laitilasta.RDS")
 
+#------ by area of arrival 
+
+migr_a <- pxweb_interactive("https://statfin.stat.fi/PXWeb/api/v1/fi")
+
+migr_a_data <- migr_a$data
+
+migr_a_data <- migr_a_data %>% 
+  filter(`Kuntien välinen muutto` != 0,
+         Lähtöalue != "KOKO MAA") %>% 
+  mutate(Tuloalue = "Laitila",
+         Lähtöalue = gsub("Lähtö - ", "", Lähtöalue))
+
+saveRDS(migr_a_data, "saapuneet_laitilaan.RDS")
+
+
 #------ Add maakunta
 
 migr_d_m_data <- left_join(migr_d_data, d1, by = c("Tuloalue" = "nimi"))
+migr_a_m_data <- left_join(migr_a_data, d1, by = c("Lähtöalue" = "nimi"))
 
 migr_d_m_data <- migr_d_m_data %>% 
   select(Tuloalue, Lähtöalue, Sukupuoli, Vuosi, `Kuntien välinen muutto`, maakunta_name_fi) %>% 
   rename(Maakunta = maakunta_name_fi, Kunta = Tuloalue)
+migr_a_m_data <- migr_a_m_data %>% 
+  select(Tuloalue, Lähtöalue, Sukupuoli, Vuosi, `Kuntien välinen muutto`, maakunta_name_fi) %>% 
+  rename(Maakunta = maakunta_name_fi, Kunta = Lähtöalue)
+
+#---- Departure
 
 before2000 <- migr_d_m_data %>% 
   mutate(Vuosi = as.integer(Vuosi)) %>% 
@@ -132,6 +152,25 @@ after2010 <- migr_d_m_data %>%
   mutate(Vuosi = as.integer(Vuosi)) %>% 
   filter(`Kuntien välinen muutto` >= 10,
          Vuosi >= 2010) 
+
+#----- Arrival
+
+before2000_a <- migr_a_m_data %>% 
+  mutate(Vuosi = as.integer(Vuosi)) %>% 
+  filter(`Kuntien välinen muutto` >= 10,
+         Vuosi < 2000) 
+
+before2010_a <- migr_a_m_data %>% 
+  mutate(Vuosi = as.integer(Vuosi)) %>% 
+  filter(`Kuntien välinen muutto` >= 10,
+         Vuosi >= 2000 & Vuosi < 2010) 
+
+after2010_a <- migr_a_m_data %>% 
+  mutate(Vuosi = as.integer(Vuosi)) %>% 
+  filter(`Kuntien välinen muutto` >= 10,
+         Vuosi >= 2010) 
+
+#---- Plot departure
 
 do_sankey <- function(df) {
   df_long <- df %>% 
@@ -159,9 +198,48 @@ s3 <- do_sankey(after2010)
 
 (s1 | s2 | s3) + 
   plot_layout(nrow = 1) +
-  plot_annotation(title = "Laitilasta muualle muuttaneet (n >= 10)",
+  plot_annotation(title = "Laitilasta muualle muuttaneet",
+                  subtitle = "Vähintään 10 henkilöä",
                   caption = "Tilastokeskus | rOpenGov/pxweb | Tuija Sonkkila",
-                  theme = theme(plot.title = element_text(size = 16, hjust = .5)))
+                  theme = theme(plot.title = element_text(size = 16, hjust = .5),
+                                plot.subtitle = element_text(size = 10, hjust = .5)))
 
-ggsave("Laitilasta_muuttaneet.pdf", width = 20, height = 13, units = "cm")
+ggsave("Laitilasta_muuttaneet.png", dpi = 600, height = 12, width = 20, units = "cm")
+
+#---- Plot arrival
+
+do_sankey_a <- function(df) {
+  df_long <- df %>% 
+    make_long(Kunta, Maakunta, Vuosi) 
+  
+  s <- ggplot(df_long, 
+              aes(x = x, next_x = next_x, 
+                  node = node, next_node = next_node, 
+                  fill = factor(node), label = node)) +
+    geom_sankey(flow.alpha = .6,
+                node.color = "gray30") +
+    geom_sankey_label(size = 3, color = "white", fill = "gray40") +
+    scale_fill_viridis_d(drop = FALSE) +
+    theme_void(base_size = 30) +
+    labs(x = NULL) +
+    theme(legend.position = "none",
+          plot.caption = element_text(vjust = .4, size = 3)) 
+  
+  return(s)
+}
+
+s4 <- do_sankey_a(before2000_a)
+s5 <- do_sankey_a(before2010_a)
+s6 <- do_sankey_a(after2010_a)
+
+(s4 | s5 | s6) + 
+  plot_layout(nrow = 1) +
+  plot_annotation(title = "Laitilaan muualta muuttaneet",
+                  subtitle = "Vähintään 10 henkilöä",
+                  caption = "Tilastokeskus | rOpenGov/pxweb | Tuija Sonkkila",
+                  theme = theme(plot.title = element_text(size = 16, hjust = .5),
+                                plot.subtitle = element_text(size = 10, hjust = .5)))
+
+
+ggsave("Laitilaan_muuttaneet.png", dpi = 600, height = 12, width = 20, units = "cm")
 
