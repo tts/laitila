@@ -124,7 +124,7 @@ migr_a_data <- migr_a_data %>%
 saveRDS(migr_a_data, "saapuneet_laitilaan.RDS")
 
 
-#------ Add maakunta
+#------ Add maakunta (although not used here)
 
 migr_d_m_data <- left_join(migr_d_data, d1, by = c("Tuloalue" = "nimi"))
 migr_a_m_data <- left_join(migr_a_data, d1, by = c("Lähtöalue" = "nimi"))
@@ -136,110 +136,96 @@ migr_a_m_data <- migr_a_m_data %>%
   select(Tuloalue, Lähtöalue, Sukupuoli, Vuosi, `Kuntien välinen muutto`, maakunta_name_fi) %>% 
   rename(Maakunta = maakunta_name_fi, Kunta = Lähtöalue)
 
-#---- Departure
 
-before2000 <- migr_d_m_data %>% 
-  mutate(Vuosi = as.integer(Vuosi)) %>% 
-  filter(`Kuntien välinen muutto` >= 10,
-         Vuosi < 2000) 
+#---- Maps of arrival
 
-before2010 <- migr_d_m_data %>% 
-  mutate(Vuosi = as.integer(Vuosi)) %>% 
-  filter(`Kuntien välinen muutto` >= 10,
-         Vuosi >= 2000 & Vuosi < 2010) 
-
-after2010 <- migr_d_m_data %>% 
-  mutate(Vuosi = as.integer(Vuosi)) %>% 
-  filter(`Kuntien välinen muutto` >= 10,
-         Vuosi >= 2010) 
-
-#----- Arrival
-
-before2000_a <- migr_a_m_data %>% 
-  mutate(Vuosi = as.integer(Vuosi)) %>% 
-  filter(`Kuntien välinen muutto` >= 10,
-         Vuosi < 2000) 
-
-before2010_a <- migr_a_m_data %>% 
-  mutate(Vuosi = as.integer(Vuosi)) %>% 
-  filter(`Kuntien välinen muutto` >= 10,
-         Vuosi >= 2000 & Vuosi < 2010) 
-
-after2010_a <- migr_a_m_data %>% 
-  mutate(Vuosi = as.integer(Vuosi)) %>% 
-  filter(`Kuntien välinen muutto` >= 10,
-         Vuosi >= 2010) 
-
-#---- Plot departure
-
-do_sankey <- function(df) {
-  df_long <- df %>% 
-    make_long(Vuosi, Maakunta, Kunta) 
-  
-  s <- ggplot(df_long, 
-              aes(x = x, next_x = next_x, 
-                  node = node, next_node = next_node, 
-                  fill = factor(node), label = node)) +
-    geom_sankey(flow.alpha = .6,
-                node.color = "gray30") +
-    geom_sankey_label(size = 3, color = "white", fill = "gray40") +
-    scale_fill_viridis_d(drop = FALSE) +
-    theme_void(base_size = 30) +
-    labs(x = NULL) +
-    theme(legend.position = "none",
-          plot.caption = element_text(vjust = .4, size = 3)) 
-
-  return(s)
+do_filter <- function(df, filter) {
+  f <- df %>% 
+    mutate(Vuosi = as.integer(Vuosi)) %>% 
+    filter(eval(rlang::parse_expr(filter))) %>% 
+    group_by(Kunta) %>% 
+    summarise(n = n())
 }
 
-s1 <- do_sankey(before2000)
-s2 <- do_sankey(before2010)
-s3 <- do_sankey(after2010)
-
-(s1 | s2 | s3) + 
-  plot_layout(nrow = 1) +
-  plot_annotation(title = "Laitilasta muualle muuttaneet",
-                  subtitle = "Vähintään 10 henkilöä",
-                  caption = "Tilastokeskus | rOpenGov/pxweb | Tuija Sonkkila",
-                  theme = theme(plot.title = element_text(size = 16, hjust = .5),
-                                plot.subtitle = element_text(size = 10, hjust = .5)))
-
-ggsave("Laitilasta_muuttaneet.png", dpi = 600, height = 12, width = 20, units = "cm")
-
-#---- Plot arrival
-
-do_sankey_a <- function(df) {
-  df_long <- df %>% 
-    make_long(Kunta, Maakunta, Vuosi) 
+add_geom <- function(df) {
+  dfg <- kunnat_geom %>%
+    right_join(df, join_by(nimi == Kunta))
   
-  s <- ggplot(df_long, 
-              aes(x = x, next_x = next_x, 
-                  node = node, next_node = next_node, 
-                  fill = factor(node), label = node)) +
-    geom_sankey(flow.alpha = .6,
-                node.color = "gray30") +
-    geom_sankey_label(size = 3, color = "white", fill = "gray40") +
-    scale_fill_viridis_d(drop = FALSE) +
-    theme_void(base_size = 30) +
-    labs(x = NULL) +
-    theme(legend.position = "none",
-          plot.caption = element_text(vjust = .4, size = 3)) 
+  dfg$Lkm <- cut(
+    dfg$n,
+    breaks = c(1, 10, 30),
+    include.lowest = TRUE,
+    dig.lab = 4
+  )
   
-  return(s)
+  return(dfg)
 }
 
-s4 <- do_sankey_a(before2000_a)
-s5 <- do_sankey_a(before2010_a)
-s6 <- do_sankey_a(after2010_a)
+do_plot <- function(df, title) {
+  ggplot() +
+    geom_sf(data = d1) +
+    geom_sf(data = df, 
+            aes(fill = Lkm)) +
+    scale_fill_viridis_d() +
+    guides(fill = guide_legend(title = title)) +
+    theme(axis.text.x = element_blank(),
+          axis.text.y = element_blank(),
+          axis.ticks = element_blank(),
+          rect = element_blank())
+}
 
-(s4 | s5 | s6) + 
-  plot_layout(nrow = 1) +
-  plot_annotation(title = "Laitilaan muualta muuttaneet",
-                  subtitle = "Vähintään 10 henkilöä",
-                  caption = "Tilastokeskus | rOpenGov/pxweb | Tuija Sonkkila",
+before2000_a <- do_filter(migr_a_m_data, "Vuosi < 2000")
+before2010_a <- do_filter(migr_a_m_data, "Vuosi >= 2000 & Vuosi < 2010")
+after2010_a <- do_filter(migr_a_m_data, "Vuosi >= 2010 & Vuosi < 2020")
+after2020_a <- do_filter(migr_a_m_data, "Vuosi >= 2020")
+
+share_geom_2000 <- add_geom(before2000_a)
+share_geom_2010 <- add_geom(before2010_a)
+share_geom_2020 <- add_geom(after2010_a)
+share_geom_2023 <- add_geom(after2020_a)
+
+m1 <- do_plot(share_geom_2000, "1990-1999")
+m2 <- do_plot(share_geom_2010, "2000-2009")
+m3 <- do_plot(share_geom_2020, "2010-2019")
+m4 <- do_plot(share_geom_2023, "2020-2023")
+
+(m1 | m2 | m3 | m4) + 
+  plot_layout(nrow = 2) +
+  plot_annotation(title = "Laitilaan muuttaneet",
+                  subtitle = "Lukumäärä",
+                  caption = "Tilastokeskus | geofi: Access Finnish Geospatial Data | Tuija Sonkkila",
                   theme = theme(plot.title = element_text(size = 16, hjust = .5),
-                                plot.subtitle = element_text(size = 10, hjust = .5)))
+                                plot.subtitle = element_text(size = 10, hjust = .5),
+                                plot.caption = element_text(size = 6)))
+
+ggsave("Laitilaan_muuttaneet.png", dpi = 600, height = 10.4, width = 10.8, units = "cm")
 
 
-ggsave("Laitilaan_muuttaneet.png", dpi = 600, height = 12, width = 20, units = "cm")
+#---- Maps of departure
+
+before2000 <- do_filter(migr_d_m_data, "Vuosi < 2000")
+before2010 <- do_filter(migr_d_m_data, "Vuosi >= 2000 & Vuosi < 2010")
+after2010 <- do_filter(migr_d_m_data, "Vuosi >= 2010 & Vuosi < 2020")
+after2020 <- do_filter(migr_d_m_data, "Vuosi >= 2020")
+
+share_geom_2000_d <- add_geom(before2000)
+share_geom_2010_d <- add_geom(before2010)
+share_geom_2020_d <- add_geom(after2010)
+share_geom_2023_d <- add_geom(after2020)
+
+m1d <- do_plot(share_geom_2000_d, "1990-1999")
+m2d <- do_plot(share_geom_2010_d, "2000-2009")
+m3d <- do_plot(share_geom_2020_d, "2010-2019")
+m4d <- do_plot(share_geom_2023_d, "2020-2023")
+
+(m1d | m2d | m3d | m4d) + 
+  plot_layout(nrow = 2) +
+  plot_annotation(title = "Laitilasta muuttaneet",
+                  subtitle = "Lukumäärä",
+                  caption = "Tilastokeskus | geofi: Access Finnish Geospatial Data | Tuija Sonkkila",
+                  theme = theme(plot.title = element_text(size = 16, hjust = .5),
+                                plot.subtitle = element_text(size = 10, hjust = .5),
+                                plot.caption = element_text(size = 6)))
+
+ggsave("Laitilasta_muuttaneet.png", dpi = 600, height = 10.4, width = 10.8, units = "cm")
 
